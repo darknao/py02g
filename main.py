@@ -1,0 +1,261 @@
+# -*- coding: UTF-8 -*-
+
+import wx
+import logging
+import time 
+import sys
+import ConfigParser
+import win32com.client
+import re
+import datetime
+import httplib2
+import copy
+from oauth2client import clientsecrets
+import apiclient.errors
+
+import constants
+import images
+import outlook
+import google
+from taskbar import TaskBarIcon
+
+
+
+def oCalNiceName(cal):
+    #print "cal:%s" % cal.FolderPath
+    regxp = re.match(r"\\\\(.*)\\", cal.FolderPath)
+    return regxp.groups()[0]
+
+class MainFrame(wx.Frame):
+    MENU_SETTINGS = wx.NewId()
+    MENU_ABOUT = wx.NewId()
+    MENU_SYNCNOW = wx.NewId()
+    MENU_LOCATE = wx.NewId()
+    ID_RELOADDCAL = wx.NewId()
+    ID_GCALLIST = wx.NewId()
+
+    def __init__(self, parent, title):
+        wx.Frame.__init__(self, parent, -1, title,
+                          pos=(150, 150),
+                          style = wx.CAPTION | wx.MINIMIZE_BOX | wx.RESIZE_BORDER | wx.SYSTEM_MENU | wx.CLOSE_BOX,
+                          size=(550, 350))
+
+        self.cfg = ConfigParser.ConfigParser()
+        self.cfg.read(constants.CFGFILE)
+
+        self.SetIcon(images.getIconIcon())
+        self.tbicon = TaskBarIcon(self)
+        menuBar = wx.MenuBar()
+        menu = wx.Menu()
+        opmenu = wx.Menu()
+        helpmenu = wx.Menu()
+
+        menu.Append(self.MENU_SYNCNOW, "&Sync Now\tCtrl+S", "Force synchronization")
+        menu.AppendSeparator()
+
+        quit = wx.MenuItem(menu, wx.ID_EXIT, 'E&xit\tCtrl+Q', 'Quit the Application')
+        #quit.SetBitmap(wx.Image('stock_exit-16.png', wx.BITMAP_TYPE_PNG).ConvertToBitmap())
+        menu.AppendItem(quit)
+
+        helpmenu.Append(self.MENU_ABOUT, "&About")
+
+        self.Bind(wx.EVT_MENU, self.OnTimer, id=self.MENU_SYNCNOW)
+        self.Bind(wx.EVT_MENU, self.OnTimeToClose, id=wx.ID_EXIT)
+        self.Bind(wx.EVT_MENU, self.OnAbout, id = self.MENU_ABOUT)
+        self.Bind(wx.EVT_CLOSE, self.OnTimeToClose)
+        self.Bind(wx.EVT_ICONIZE, self.OnMinimize)
+
+        menuBar.Append(menu, "&File")
+
+        menuBar.Append(helpmenu, "&Help")
+        self.SetMenuBar(menuBar)
+
+        self.CreateStatusBar()
+        self.SetStatusText("Idle")
+
+        panel = wx.Panel(self)
+
+        self.destCalText = wx.StaticText(panel, -1, "Google calendar:")
+        self.srcCalText = wx.StaticText(panel, -1, "Outlook calendars:")
+
+        self.uploadtext = wx.StaticText(panel, -1, "")
+
+        self.motd = wx.TextCtrl(panel, -1, "", size=(200, 100), style=wx.TE_MULTILINE|wx.TE_READONLY)
+
+        sizer = wx.BoxSizer(wx.VERTICAL)
+
+        self.oCals = []
+
+        #try:
+        self.outlook = outlook.Outlook()
+        self.oCals = self.outlook.getCalendars(self.cfg.get('Outlook', 'extraCal'))
+        #except Exception, e:
+        #    # Outlook not found ?
+        #    dlg = wx.MessageDialog(self,
+        #                            "Microsoft Outlook application was not found!\r\n%s need it in order to run correctly." % constants.APPNAME,
+        #                            "Microsoft Outlook not found!",
+        #                            wx.OK | wx.ICON_ERROR)
+        #    dlg.ShowModal()
+
+        proxy = None
+        if self.cfg.getboolean('Proxy', 'enabled'):
+            proxy = httplib2.ProxyInfo(proxy_type =  httplib2.socks.PROXY_TYPE_HTTP_NO_TUNNEL,
+                proxy_host = self.cfg.get('Proxy', 'host'),
+                proxy_port = self.cfg.getint('Proxy', 'port'),
+                proxy_user = self.cfg.get('Proxy', 'username'),
+                proxy_pass = self.cfg.get('Proxy', 'password'),
+                proxy_rdns = True)
+
+        
+
+        destCalBox = wx.BoxSizer(wx.HORIZONTAL)
+        destCalBox.Add(self.destCalText, 0, wx.ALIGN_CENTER_VERTICAL  | wx.ALL, 1)
+
+
+        self.listDestCal = wx.ComboBox(panel, self.ID_GCALLIST, size=(150, -1), style=wx.CB_READONLY)
+        destCalBox.Add(self.listDestCal, 0, wx.GROW|wx.ALIGN_CENTER_VERTICAL|wx.RIGHT, 5)
+        self.Bind(wx.EVT_COMBOBOX, self.OnGcalSelect, id = self.ID_GCALLIST)
+
+
+        reloadDestCalBtn = wx.Button(panel, self.ID_RELOADDCAL, 'reload')
+        destCalBox.Add(reloadDestCalBtn, 0, wx.ALIGN_CENTER_VERTICAL, 5 )
+        sizer.Add(destCalBox, 0, wx.EXPAND | wx.ALL, 1)
+
+        self.Bind(wx.EVT_BUTTON, lambda event: self.reloadDestCal(event, force=True), id = self.ID_RELOADDCAL)
+
+        try:
+            self.google = google.Google(proxy=proxy)
+            self.reloadDestCal()
+        except httplib2.ServerNotFoundError, e:
+            dlg = wx.MessageDialog(self, "%s\r\nCheck your Internet connection and/or your proxy settings." % e,
+                                   "Connection error!",
+                                   wx.OK | wx.ICON_ERROR)
+            dlg.ShowModal()
+            dlg.Destroy()
+            sys.exit(-1)
+        except clientsecrets.InvalidClientSecretsError, e:
+            dlg = wx.MessageDialog(self, """WARNING: Google API credentials not found!
+
+Please get a JSON key from the APIs Console <https://code.google.com/apis/console>
+and rename it to client_secrets.json""",
+                                   "%s" % e,
+                                   wx.OK | wx.ICON_ERROR)
+            dlg.ShowModal()
+            dlg.Destroy()
+            sys.exit(-1)
+            
+
+        sizer.Add(self.srcCalText, 0, wx.EXPAND | wx.ALL, 1)
+        for oCal in self.oCals:
+            chkb = wx.CheckBox(panel, 0, oCalNiceName(oCal), pos=(10, 10))
+            chkb.Enable(False)
+            chkb.SetValue(1)
+            sizer.Add(chkb,0,wx.EXPAND | wx.ALL ,1)
+            #sizer.Add(copy.copy(chkb),0,wx.EXPAND | wx.ALL ,1)
+
+        if len(self.oCals) <= 0:
+            sizer.Add(wx.StaticText(panel, -1, "no calendar!"),0,wx.EXPAND | wx.ALL ,1)
+        else:
+            self.timer = wx.Timer(self)
+            self.timer.Start(1800000)
+            self.Bind(wx.EVT_TIMER, self.OnTimer)
+            self.syncMyCal()
+
+        line = wx.StaticLine(panel, -1, size=(20,-1), style=wx.LI_HORIZONTAL)
+        sizer.Add(line, 0, wx.GROW|wx.ALIGN_CENTER_VERTICAL|wx.RIGHT|wx.TOP, 5)
+
+        sizer.Add(self.uploadtext, 0, wx.ALL, 1)
+
+        sizer.Add(self.motd, 4, wx.ALL|wx.EXPAND, 1)
+
+        panel.SetSizer(sizer)
+        panel.Layout()
+
+
+    def OnTimeToClose(self, evt):
+        self.tbicon.OnTaskBarQuit(None)
+        self.Destroy()
+
+    def OnAbout(self, evt):
+        dlg = wx.MessageDialog(self,
+                                '%s v%s\n(c) 2014 rBus Radio Team. All Rights NOT Reserved.\n\n' % (constants.APPNAME, constants.VERSION,),
+                                'About', wx.OK)
+        dlg.ShowModal()
+        dlg.Destroy()
+
+
+    def OnTimer(self, evt =  None ):
+        self.SetStatusText("Syncing...")
+        # SYnc stuff here...
+        self.syncMyCal()
+        self.SetStatusText("Idle")
+
+    def syncMyCal(self):
+        now = datetime.datetime.now()
+        if self.google.calId != None:
+            self.motd.AppendText("%s: Starting sync...\r\n" % now)
+            for oCal in self.oCals:
+                calId = oCal.EntryID
+                self.motd.AppendText("o Syncing cal: %s\r\n" % ( oCalNiceName(oCal),))
+                calItems=oCal.Items
+
+                calItems.Sort("[Start]", True)
+                calItems.IncludeRecurrences = "True"
+                evts = self.outlook.getAppt(calItems)
+                self.motd.AppendText(" -> Cleaning events...\r\n")
+                try:
+                    self.google.cleanCal(calId, oCal.Items)
+                    self.motd.AppendText(" -> Syncing %s new events\r\n" % (len(evts),))
+                except apiclient.errors.HttpError, e:
+                    self.motd.AppendText("ERROR: %s\r\n" % (e,))
+
+
+                if len(evts) > 0:
+                    self.google.sendEvents(calId, evts)
+            now = datetime.datetime.now()
+            self.motd.AppendText("%s: Sync completed\r\n" % now)
+        else:
+            self.motd.AppendText("Please select a Google calendar!\r\n")
+
+    def OnGcalSelect(self, evt):
+        cBox = evt.GetEventObject()
+        if cBox.GetId() == self.ID_GCALLIST:
+            calIndex = cBox.GetCurrentSelection()
+            self.uploadtext.SetLabel("gCalendar selected: %s: %s [%s]" % (calIndex, cBox.GetValue(), self.gCals[calIndex]['calId']))
+            self.cfg.set('Google', 'calId', self.gCals[calIndex]['calId'])
+            self.google.calId = self.gCals[calIndex]['calId']
+            with open(constants.CFGFILE, 'w') as configfile:
+                self.cfg.write(configfile)
+
+
+    def reloadDestCal(self, evt = None, force=False):
+        if evt != None:
+            btn = evt.GetEventObject()
+            btn.Disable()
+        self.SetStatusText("Fetching Google Calendars list...")
+        selectedId = 0
+        gcalId = self.cfg.get('Google', 'calId')
+        self.gCals = self.google.listCals(force=force)
+        if len(self.gCals) > 0:
+            self.listDestCal.Clear()
+            for gCal in self.gCals:
+                self.listDestCal.Append(gCal['description'])
+                if gCal['calId'] == gcalId:
+                    selectedId = gCal['id']
+                    self.google.calId = gcalId
+            self.listDestCal.SetSelection(selectedId)
+            if evt != None:
+                btn.Enable()
+
+        self.SetStatusText("Idle")
+
+    def OnMinimize(self, evt):
+        self.Show(False)
+
+app = wx.App(redirect=True,filename="logfile.txt")
+
+frame = MainFrame(None, "%s v%s" % (constants.APPNAME, constants.VERSION))
+app.SetTopWindow(frame)
+frame.Show()
+
+app.MainLoop()
