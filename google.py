@@ -27,6 +27,7 @@ from apiclient.discovery import build
 import logging
 import httplib2
 import httplib
+import os.path
 
 import constants
 import database
@@ -77,8 +78,12 @@ class Google(object):
             proxy_rdns = True,
             #proxy_user_agent = 'myCompanyUserAgent'
             )"""
-        print "cacert : %s" % constants.resource_path('cacerts.txt')
-        self.h = httplib2.Http(proxy_info=proxy, ca_certs=constants.resource_path('cacerts.txt'))
+        cacert = constants.resource_path('cacerts.txt')
+        if os.path.isfile(cacert):
+            print "cacert : %s" % cacert
+        else:
+            cacert = None
+        self.h = httplib2.Http(proxy_info=proxy, ca_certs=cacert)
         self.storage = Storage('calendar.dat')
         self.credentials = self.storage.get()
         if self.credentials is None or self.credentials.invalid == True:
