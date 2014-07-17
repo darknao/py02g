@@ -1,4 +1,22 @@
 # -*- coding: UTF-8 -*-
+#
+# Copyright (c) 2014 darknao
+# https://github.com/darknao/py02g
+#
+# This file is part of pyO2g.
+# 
+# pyO2g is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import wx
 import logging
@@ -6,6 +24,7 @@ import time
 import sys
 import ConfigParser
 import win32com.client
+import pywintypes
 import re
 import datetime
 import httplib2
@@ -47,7 +66,6 @@ class MainFrame(wx.Frame):
         self.tbicon = TaskBarIcon(self)
         menuBar = wx.MenuBar()
         menu = wx.Menu()
-        opmenu = wx.Menu()
         helpmenu = wx.Menu()
 
         menu.Append(self.MENU_SYNCNOW, "&Sync Now\tCtrl+S", "Force synchronization")
@@ -78,9 +96,9 @@ class MainFrame(wx.Frame):
         self.destCalText = wx.StaticText(panel, -1, "Google calendar:")
         self.srcCalText = wx.StaticText(panel, -1, "Outlook calendars:")
 
-        self.uploadtext = wx.StaticText(panel, -1, "")
+        self.debugText = wx.StaticText(panel, -1, "")
 
-        self.motd = wx.TextCtrl(panel, -1, "", size=(200, 100), style=wx.TE_MULTILINE|wx.TE_READONLY)
+        self.log = wx.TextCtrl(panel, -1, "", size=(200, 100), style=wx.TE_MULTILINE|wx.TE_READONLY)
 
         sizer = wx.BoxSizer(wx.VERTICAL)
 
@@ -153,20 +171,25 @@ and rename it to client_secrets.json""",
             sizer.Add(chkb,0,wx.EXPAND | wx.ALL ,1)
             #sizer.Add(copy.copy(chkb),0,wx.EXPAND | wx.ALL ,1)
 
+        try:
+            interval = self.cfg.getint('Main', 'syncInterval')
+        except (ConfigParser.NoSectionError, ConfigParser.NoOptionError), e:
+            interval = 30 # default: 30 minutes
+
         if len(self.oCals) <= 0:
             sizer.Add(wx.StaticText(panel, -1, "no calendar!"),0,wx.EXPAND | wx.ALL ,1)
         else:
             self.timer = wx.Timer(self)
-            self.timer.Start(1800000)
+            self.timer.Start(interval * 60 * 1000) # convert to ms
             self.Bind(wx.EVT_TIMER, self.OnTimer)
             self.syncMyCal()
 
         line = wx.StaticLine(panel, -1, size=(20,-1), style=wx.LI_HORIZONTAL)
         sizer.Add(line, 0, wx.GROW|wx.ALIGN_CENTER_VERTICAL|wx.RIGHT|wx.TOP, 5)
 
-        sizer.Add(self.uploadtext, 0, wx.ALL, 1)
+        sizer.Add(self.debugText, 0, wx.ALL, 1)
 
-        sizer.Add(self.motd, 4, wx.ALL|wx.EXPAND, 1)
+        sizer.Add(self.log, 4, wx.ALL|wx.EXPAND, 1)
 
         panel.SetSizer(sizer)
         panel.Layout()
@@ -185,43 +208,44 @@ and rename it to client_secrets.json""",
 
 
     def OnTimer(self, evt =  None ):
-        self.SetStatusText("Syncing...")
+        self.PushStatusText("Syncing...")
         # SYnc stuff here...
         self.syncMyCal()
-        self.SetStatusText("Idle")
+        self.PopStatusText()
 
     def syncMyCal(self):
         now = datetime.datetime.now()
         if self.google.calId != None:
-            self.motd.AppendText("%s: Starting sync...\r\n" % now)
+            self.log.AppendText("%s: Starting sync...\r\n" % now)
             for oCal in self.oCals:
                 calId = oCal.EntryID
-                self.motd.AppendText("o Syncing cal: %s\r\n" % ( oCalNiceName(oCal),))
+                self.log.AppendText("o Syncing cal: %s\r\n" % ( oCalNiceName(oCal),))
                 calItems=oCal.Items
 
                 calItems.Sort("[Start]", True)
                 calItems.IncludeRecurrences = "True"
                 evts = self.outlook.getAppt(calItems)
-                self.motd.AppendText(" -> Cleaning events...\r\n")
+                self.log.AppendText(" -> Cleaning events...\r\n")
                 try:
                     self.google.cleanCal(calId, oCal.Items)
-                    self.motd.AppendText(" -> Syncing %s new events\r\n" % (len(evts),))
+                    self.log.AppendText(" -> Syncing %s new events\r\n" % (len(evts),))
                 except apiclient.errors.HttpError, e:
-                    self.motd.AppendText("ERROR: %s\r\n" % (e,))
+                    self.log.AppendText("ERROR: %s\r\n" % (e,))
 
 
                 if len(evts) > 0:
                     self.google.sendEvents(calId, evts)
             now = datetime.datetime.now()
-            self.motd.AppendText("%s: Sync completed\r\n" % now)
+            self.log.AppendText("%s: Sync completed\r\n" % now)
+            self.log.AppendText("next sync in %d minutes\r\n" % round(self.timer.GetInterval()/60/1000,2) )
         else:
-            self.motd.AppendText("Please select a Google calendar!\r\n")
+            self.log.AppendText("Please select a Google calendar!\r\n")
 
     def OnGcalSelect(self, evt):
         cBox = evt.GetEventObject()
         if cBox.GetId() == self.ID_GCALLIST:
             calIndex = cBox.GetCurrentSelection()
-            self.uploadtext.SetLabel("gCalendar selected: %s: %s [%s]" % (calIndex, cBox.GetValue(), self.gCals[calIndex]['calId']))
+            self.debugText.SetLabel("gCalendar selected: %s: %s [%s]" % (calIndex, cBox.GetValue(), self.gCals[calIndex]['calId']))
             self.cfg.set('Google', 'calId', self.gCals[calIndex]['calId'])
             self.google.calId = self.gCals[calIndex]['calId']
             with open(constants.CFGFILE, 'w') as configfile:
@@ -232,7 +256,7 @@ and rename it to client_secrets.json""",
         if evt != None:
             btn = evt.GetEventObject()
             btn.Disable()
-        self.SetStatusText("Fetching Google Calendars list...")
+        self.PushStatusText("Fetching Google Calendars list...")
         selectedId = 0
         gcalId = self.cfg.get('Google', 'calId')
         self.gCals = self.google.listCals(force=force)
@@ -247,7 +271,7 @@ and rename it to client_secrets.json""",
             if evt != None:
                 btn.Enable()
 
-        self.SetStatusText("Idle")
+        self.PopStatusText()
 
     def OnMinimize(self, evt):
         self.Show(False)
