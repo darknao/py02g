@@ -19,6 +19,8 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import win32com.client
+import pywintypes
+import winerror
 import datetime, pytz
 import logging
 from collections import deque
@@ -46,17 +48,48 @@ class Outlook(object):
         self.log = logging.getLogger('pyO2gcal')
         self.log.setLevel(logging.DEBUG)
 
-        self.outlookCOM = win32com.client.Dispatch("Outlook.Application")
+        self.createCOM()
 
         self.db = database.db()
 
+    def createCOM(self):
+        success = False
+        try:
+            self.outlookCOM = win32com.client.Dispatch("Outlook.Application")
+            success = True
+        except pywintypes.com_error, e:
+            self.outlookCOM = None
+
+        return success
+
+    def isAlive(self):
+        alive = False
+        if self.outlookCOM != None:
+            try:
+                # Try something
+                self.outlookCOM.GetNamespace("MAPI")
+                alive = True
+            except pywintypes.com_error, e:
+                if e[0] in (winerror.REGDB_E_CLASSNOTREG, -2147023174):
+                    # Try to recrate the connection
+                    if self.createCOM():
+                        alive = True
+                else:
+                    raise e
+        else:
+            if self.createCOM():
+                alive = True
+        return alive
+
+
     def getCalendars(self, extra = None):
         cals = []
-        ns = self.outlookCOM.GetNamespace("MAPI")
-        cals.append(ns.GetDefaultFolder(9))
-        if extra != None and extra != "" :
-            r = ns.CreateRecipient(extra)
-            cals.append(ns.GetSharedDefaultFolder(r,9))
+        if self.isAlive():
+            ns = self.outlookCOM.GetNamespace("MAPI")
+            cals.append(ns.GetDefaultFolder(9))
+            if extra != None and extra != "" :
+                r = ns.CreateRecipient(extra)
+                cals.append(ns.GetSharedDefaultFolder(r,9))
         return cals
 
     def getNextRecDate(self, appt):

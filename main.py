@@ -25,6 +25,7 @@ import sys
 import ConfigParser
 import win32com.client
 import pywintypes
+import winerror
 import re
 import datetime
 import httplib2
@@ -52,6 +53,7 @@ class MainFrame(wx.Frame):
     MENU_LOCATE = wx.NewId()
     ID_RELOADDCAL = wx.NewId()
     ID_GCALLIST = wx.NewId()
+    outlook = None
 
     def __init__(self, parent, title):
         wx.Frame.__init__(self, parent, -1, title,
@@ -102,18 +104,7 @@ class MainFrame(wx.Frame):
 
         sizer = wx.BoxSizer(wx.VERTICAL)
 
-        self.oCals = []
-
-        #try:
-        self.outlook = outlook.Outlook()
-        self.oCals = self.outlook.getCalendars(self.cfg.get('Outlook', 'extraCal'))
-        #except Exception, e:
-        #    # Outlook not found ?
-        #    dlg = wx.MessageDialog(self,
-        #                            "Microsoft Outlook application was not found!\r\n%s need it in order to run correctly." % constants.APPNAME,
-        #                            "Microsoft Outlook not found!",
-        #                            wx.OK | wx.ICON_ERROR)
-        #    dlg.ShowModal()
+        self.getOutlookCals()
 
         proxy = None
         if self.cfg.getboolean('Proxy', 'enabled'):
@@ -178,11 +169,11 @@ and rename it to client_secrets.json""",
 
         if len(self.oCals) <= 0:
             sizer.Add(wx.StaticText(panel, -1, "no calendar!"),0,wx.EXPAND | wx.ALL ,1)
-        else:
-            self.timer = wx.Timer(self)
-            self.timer.Start(interval * 60 * 1000) # convert to ms
-            self.Bind(wx.EVT_TIMER, self.OnTimer)
-            self.syncMyCal()
+
+        self.timer = wx.Timer(self)
+        self.timer.Start(interval * 60 * 1000) # convert to ms
+        self.Bind(wx.EVT_TIMER, self.OnTimer)
+        self.syncMyCal()
 
         line = wx.StaticLine(panel, -1, size=(20,-1), style=wx.LI_HORIZONTAL)
         sizer.Add(line, 0, wx.GROW|wx.ALIGN_CENTER_VERTICAL|wx.RIGHT|wx.TOP, 5)
@@ -194,17 +185,25 @@ and rename it to client_secrets.json""",
         panel.SetSizer(sizer)
         panel.Layout()
 
+    def getOutlookCals(self):
+        if self.outlook == None:
+            self.outlook = outlook.Outlook()
+
+        self.oCals = self.outlook.getCalendars(self.cfg.get('Outlook', 'extraCal'))
+
 
     def OnTimeToClose(self, evt):
         self.tbicon.OnTaskBarQuit(None)
         self.Destroy()
 
     def OnAbout(self, evt):
-        dlg = wx.MessageDialog(self,
-                                '%s v%s\n(c) 2014 rBus Radio Team. All Rights NOT Reserved.\n\n' % (constants.APPNAME, constants.VERSION,),
-                                'About', wx.OK)
-        dlg.ShowModal()
-        dlg.Destroy()
+        about = wx.AboutDialogInfo()
+        about.Name = constants.APPNAME
+        about.Version = "v%s" % constants.VERSION
+        about.Copyright = "(c) 2014 darknao / rBus Radio Team"
+        about.WebSite = "https://github.com/darknao/py02g"
+
+        wx.AboutBox(about)
 
 
     def OnTimer(self, evt =  None ):
@@ -216,28 +215,32 @@ and rename it to client_secrets.json""",
     def syncMyCal(self):
         now = datetime.datetime.now()
         if self.google.calId != None:
-            self.log.AppendText("%s: Starting sync...\r\n" % now)
-            for oCal in self.oCals:
-                calId = oCal.EntryID
-                self.log.AppendText("o Syncing cal: %s\r\n" % ( oCalNiceName(oCal),))
-                calItems=oCal.Items
+            if self.outlook.isAlive():
+                self.getOutlookCals()
+                self.log.AppendText("%s: Starting sync...\r\n" % now)
+                for oCal in self.oCals:
+                    calId = oCal.EntryID
+                    self.log.AppendText("o Syncing cal: %s\r\n" % ( oCalNiceName(oCal),))
+                    calItems=oCal.Items
 
-                calItems.Sort("[Start]", True)
-                calItems.IncludeRecurrences = "True"
-                evts = self.outlook.getAppt(calItems)
-                self.log.AppendText(" -> Cleaning events...\r\n")
-                try:
-                    self.google.cleanCal(calId, oCal.Items)
-                    self.log.AppendText(" -> Syncing %s new events\r\n" % (len(evts),))
-                except apiclient.errors.HttpError, e:
-                    self.log.AppendText("ERROR: %s\r\n" % (e,))
+                    calItems.Sort("[Start]", True)
+                    calItems.IncludeRecurrences = "True"
+                    evts = self.outlook.getAppt(calItems)
+                    self.log.AppendText(" -> Cleaning events...\r\n")
+                    try:
+                        self.google.cleanCal(calId, oCal.Items)
+                        self.log.AppendText(" -> Syncing %s new events\r\n" % (len(evts),))
+                    except apiclient.errors.HttpError, e:
+                        self.log.AppendText("ERROR: %s\r\n" % (e,))
 
 
-                if len(evts) > 0:
-                    self.google.sendEvents(calId, evts)
-            now = datetime.datetime.now()
-            self.log.AppendText("%s: Sync completed\r\n" % now)
-            self.log.AppendText("next sync in %d minutes\r\n" % round(self.timer.GetInterval()/60/1000,2) )
+                    if len(evts) > 0:
+                        self.google.sendEvents(calId, evts)
+                now = datetime.datetime.now()
+                self.log.AppendText("%s: Sync completed\r\n" % now)
+                self.log.AppendText("next sync in %d minutes\r\n" % round(self.timer.GetInterval()/60/1000,2) )
+            else:
+                self.log.AppendText("Outlook not running!\r\n")
         else:
             self.log.AppendText("Please select a Google calendar!\r\n")
 
