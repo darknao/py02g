@@ -23,6 +23,7 @@ from oauth2client.file import Storage
 from oauth2client import tools
 from oauth2client import client
 from apiclient.discovery import build
+import apiclient.errors
 
 import logging
 import httplib2
@@ -89,6 +90,9 @@ class Google(object):
         if self.credentials is None or self.credentials.invalid == True:
             self.credentials = tools.run_flow(self.flow, self.storage, cmd_flags(), http=self.h)
 
+        # Validate the connection by listing calendars
+        self.listCals(force=True)
+
     def secretsMissings(self, filename):
         raise GoogleSecretsError("""WARNING: Please configure Google API credentials!
 
@@ -107,10 +111,15 @@ and rename it to : %s""" % filename)
                 self.log.debug("insert event [%s]" % (event['summary'], ))
                 #log.debug("with id: %s" % (event['myid'], ))
                 #log.debug("\r\n%s" % (event,))
-                created_event = service.events().insert(calendarId=self.calId, body=event).execute()
+                myid = event.pop('myid')
+                try:
+                    created_event = service.events().insert(calendarId=self.calId, body=event).execute()
+                except apiclient.errors.HttpError, e:
+                    self.log.debug("error: %s\r\nevent: %s" % ( e.content, event,))
+                    raise
                 if created_event != None:
                     gid = created_event['id']
-                    c.execute('''insert into sync (calId, oid, gid) values (?, ?, ?)''', (calId, event['myid'] ,gid,))
+                    c.execute('''insert into sync (calId, oid, gid) values (?, ?, ?)''', (calId, myid ,gid,))
                     self.db.commit()
         else:
             self.log.warning("no google calendar selected!")

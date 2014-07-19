@@ -19,9 +19,12 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import win32com.client
+
 import pywintypes
 import winerror
 import datetime, pytz
+import dateutil.rrule
+
 import logging
 from collections import deque
 import copy
@@ -40,6 +43,40 @@ weekDays = deque((olMonday, olTuesday, olWednesday, olThursday, olFriday, olSatu
 weekDaysN = deque((0,1,2,3,4,5,6))
 dow={d:i for i,d in 
          enumerate('Mon,Tue,Wed,Thu,Fri,Sat,Sun'.split(','))}
+
+msc = win32com.client.constants
+rrule = dateutil.rrule
+
+FREQNAMES = ['YEARLY','MONTHLY','WEEKLY','DAILY','HOURLY','MINUTELY','SECONDLY']
+
+def rrule_to_string(rule):
+    output = []
+    
+    parts = ['RRULE:FREQ='+FREQNAMES[rule._freq]]
+    if rule._interval != 1:
+        parts.append('INTERVAL='+str(rule._interval))
+    if rule._wkst:
+        parts.append('WKST='+str(rule._wkst))
+    if rule._count:
+        parts.append('COUNT='+str(rule._count))
+    
+    for name, value in [
+            ('BYSETPOS', rule._bysetpos),
+            ('BYMONTH', rule._bymonth),
+            ('BYMONTHDAY', rule._bymonthday),
+            ('BYYEARDAY', rule._byyearday),
+            ('BYWEEKNO', rule._byweekno),
+            ('BYDAY', rule._byweekday),
+            ]:
+        if value:
+            if name == 'BYDAY':
+                parts.append(name+'='+','.join(str(rrule.weekdays[v]) for v in value))
+            else:
+                parts.append(name+'='+','.join(str(v) for v in value))
+
+    output.append(';'.join(parts))
+    return '\n'.join(output)
+
 
 class Outlook(object):
     """docstring for Outlook"""
@@ -96,24 +133,102 @@ class Outlook(object):
         nDate = datetime.datetime(1980,1,1)
         now = datetime.datetime.now()
         eDate = datetime.datetime(now.year, now.month, now.day, appt.Start.hour, appt.Start.minute)
-        rPattrn = appt.GetRecurrencePattern()
         week = copy.copy(weekDays)
         weekN = copy.copy(weekDaysN)
         week.rotate(-now.weekday())
         weekN.rotate(-now.weekday())
-        #print "gNRD: week %s, weekN %s, pattern: %d" %(repr(week), repr(weekN), rPattrn.DayOfWeekMask)
-        # find next occurrence in the next 7 days
-        for i in range(0, 7):
-            if rPattrn.DayOfWeekMask & week[i]:
-                nDate = self.next_dow(eDate,(weekN[i],))
-                print "Next occurence : %s" % (nDate.isoformat(),)
-                break
+
+        rPattrn = appt.GetRecurrencePattern()
+
+        if rPattrn.RecurrenceType == msc.olRecursDaily:
+            # Every N rPattrn.Interval
+            startDate = datetime.datetime(appt.Start.year, appt.Start.month, appt.Start.day, appt.Start.hour, appt.Start.minute)
+            if startDate >= now:
+                nDate = startDate
+            else:
+                if rPattrn.NoEndDate == False:
+                    # Either Occurrences or PatternEndDate
+                    endDate = datetime.datetime(rPattrn.PatternEndDate.year, rPattrn.PatternEndDate.month, rPattrn.PatternEndDate.day,
+                        rPattrn.PatternEndDate.hour, rPattrn.PatternEndDate.minute)
+                    if endDate < now:
+                        # event expired
+                        return nDate
+
+                nextday = (startDate.weekday() + rPattrn.Interval) % 7
+                nDate = self.next_dow(eDate,(nextday,))
+
+        elif rPattrn.RecurrenceType == msc.olRecursWeekly:
+            #print "gNRD: week %s, weekN %s, pattern: %d" %(repr(week), repr(weekN), rPattrn.DayOfWeekMask)
+            # find next occurrence in the next 7 days
+            for i in range(0, 7):
+                if rPattrn.DayOfWeekMask & week[i]:
+                    nDate = self.next_dow(eDate,(weekN[i],))
+                    #print "Next occurence : %s" % (nDate.isoformat(),)
+                    break
+        elif rPattrn.RecurrenceType == msc.olRecursMonthly:
+            pass
+        elif rPattrn.RecurrenceType == msc.olRecursMonthNth:
+            pass
+        elif rPattrn.RecurrenceType == msc.olRecursYearly:
+            pass
+        elif rPattrn.RecurrenceType == msc.olRecursYearNth:
+            pass
+
+
+
         return nDate
 
     def next_dow(self, d, days):
         while d.weekday() not in days:
             d += datetime.timedelta(1)
         return d 
+
+    def getRRULE(self, event):
+        # dtstart=None,
+        # bysetpos=None,
+        #bymonth=None, bymonthday=None, byyearday=None, byeaster=None,
+        #byweekno=None, byweekday=None,
+        #byhour=None, byminute=None, bysecond=None
+        RRULE = None 
+        until = None
+        count = None
+        byweekday = None
+        if event.IsRecurring:
+            rp = event.GetRecurrencePattern()
+
+            if rp.RecurrenceType == msc.olRecursDaily:
+                freq = rrule.DAILY
+            elif rp.RecurrenceType == msc.olRecursWeekly:
+                freq = rrule.WEEKLY
+            elif rp.RecurrenceType == msc.olRecursMonthly:
+                freq = rrule.MONTHLY
+            elif rp.RecurrenceType == msc.olRecursMonthNth:
+                freq = rrule.MONTHLY
+            elif rp.RecurrenceType == msc.olRecursYearly:
+                freq = rrule.YEARLY
+            elif rp.RecurrenceType == msc.olRecursYearNth:
+                freq = rrule.YEARLY
+            else:
+                raise ValueError ("unknown recurrence type: %s" % rp.RecurrenceType )
+
+            if rp.NoEndDate == False:
+                until = datetime.datetime(rp.PatternEndDate.year, rp.PatternEndDate.month, rp.PatternEndDate.day,
+                    rp.PatternEndDate.hour, rp.PatternEndDate.minute)
+                count = rp.Occurrences
+            
+            interval = rp.Interval
+
+            if rp.DayOfWeekMask > 0:
+                byweekday = ()
+                for i in range(0,7):
+                    if rp.DayOfWeekMask & weekDays[i]:
+                        byweekday += (rrule.weekdays[i],)
+
+        RRULE = rrule.rrule(freq, count=count, interval=interval, until=until, byweekday=byweekday)
+
+        return RRULE
+        #rrule_to_string(RRULE)
+
 
 
     def getAppt(self, appts):
@@ -128,7 +243,7 @@ class Outlook(object):
                 rDate = self.getNextRecDate(appt)
                 if rDate != None:
                     dStart = rDate
-            if dStart >= now or (appt.IsRecurring and self.getNextRecDate(appt) >= now) and appt.ResponseStatus in (3,0,1,2) and appt.MeetingStatus in (0,1,3) :
+            if dStart >= now or appt.IsRecurring and appt.ResponseStatus in (3,0,1,2) and appt.MeetingStatus in (0,1,3) :
                 c.execute('''select gid from sync
                          where oid=?''', (appt.EntryID.lower(),))
                 r = c.fetchall()
@@ -137,35 +252,42 @@ class Outlook(object):
         return events
 
     def createEvent(self, appt): 
-        tz=pytz.timezone('Europe/Paris')
+        tz=pytz.timezone('Europe/Paris') # TODO: Add a custom settings for this
         now = datetime.datetime.now()
         dStart = datetime.datetime(appt.Start.year, appt.Start.month, appt.Start.day, appt.Start.hour, appt.Start.minute)
         dEnd = datetime.datetime(appt.End.year, appt.End.month, appt.End.day, appt.End.hour, appt.End.minute)
-        if appt.IsRecurring:
-            rDate = self.getNextRecDate(appt)
-            if rDate != None:
-                dStart = rDate
-                dEnd = dEnd.replace(year=rDate.year, month=rDate.month, day=rDate.day)
         event = {
           'summary': appt.Subject,
           'location': appt.Location,
           'start': {
-            'dateTime': tz.localize(dStart).isoformat()
+            'dateTime': dStart.isoformat(),
+            'timeZone': 'Europe/Paris'
             # 'date' : for all day event
           },
           'end': {
-            'dateTime': tz.localize(dEnd).isoformat()
+            'dateTime': dEnd.isoformat(),
+            'timeZone': 'Europe/Paris',
             # 'date' : for all day event
           },
           'description' : appt.Body,
-          'myid' : appt.EntryID.lower()
-          #'attendees': [
-          #  {
-          #    'email': 'attendeeEmail',
-          #  },
-          #  # ...
-          #],
+          'myid' : appt.EntryID.lower(),
+          'attendees': [
+            {
+              'email': 'francois.f.andrieu.external@airbus.com',
+            },
+            # ...
+          ],
         }
+        if appt.IsRecurring:
+            recurrence = self.getRRULE(appt)
+            if recurrence is not None:
+                event['recurrence'] = [rrule_to_string(recurrence)]
+            #rDate = self.getNextRecDate(appt)
+            #if rDate != None:
+            #    dStart = rDate.replace(hour=now.hour+1)
+            #    dEnd = dEnd.replace(year=rDate.year, month=rDate.month, day=rDate.day,hour=now.hour+2)
+            #    event['start']['dateTime'] = dStart.isoformat()
+            #    event['end']['dateTime'] = dEnd.isoformat()
         if appt.ReminderSet:
             event['reminders'] = { "useDefault": False, "overrides" : [{"method" : "popup", "minutes" : appt.ReminderMinutesBeforeStart}]}
 

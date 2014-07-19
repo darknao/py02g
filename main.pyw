@@ -197,12 +197,12 @@ and rename it to client_secrets.json""",
         self.Destroy()
 
     def OnAbout(self, evt):
+        # NOTE: Crash with wxPython3.0.0 & py2exe (use wxPython2.9.5 until it's fixed)
         about = wx.AboutDialogInfo()
         about.Name = constants.APPNAME
         about.Version = "v%s" % constants.VERSION
         about.Copyright = "(c) 2014 darknao / rBus Radio Team"
         about.WebSite = "https://github.com/darknao/py02g"
-
         wx.AboutBox(about)
 
 
