@@ -22,20 +22,20 @@ import sqlite3
 
 import constants
 
-sql = sqlite3.connect(constants.DBFILE)
+sql = sqlite3.connect(constants.DBFILE, detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
 sql.row_factory = sqlite3.Row
 
 schema = {
     'sync' : {
-        'date' : 'text',
-        'calId' : 'text',
-        'oid' : 'text',
-        'gid' : 'text',
+        'lastUpdated'   : 'timestamp',
+        'calId'         : 'text',
+        'oid'           : 'text',
+        'gid'           : 'text',
         },
     'gcalendar' : {
-        'id' : 'integer',
-        'calId' : 'text',
-        'description' : 'text',
+        'id'            : 'integer',
+        'calId'         : 'text',
+        'description'   : 'text',
         },
     }
 
@@ -78,9 +78,12 @@ def checkDB():
             for colname, coltype in cols.iteritems():
                 found = False
                 for row in rows:
-                    if row['name'] == colname and row['type'] == coltype:
-                        found = True
-                        break
+                    if row['name'] == colname:
+                        if row['type'] != coltype:
+                            print "ERROR in %s: column %s has wrong type (%s instead of %s)" % (table, colname, row['type'], coltype)
+                        else:
+                            found = True
+                            break
                 if found == False:
                     print "ERROR in %s: column %s not found or wrong type (%s)" % (table, colname, coltype)
                     error += 1

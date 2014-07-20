@@ -29,6 +29,7 @@ import logging
 import httplib2
 import httplib
 import os.path
+import datetime
 
 import constants
 import database
@@ -108,19 +109,39 @@ and rename it to : %s""" % filename)
             service = build("calendar", "v3", http=http)
 
             for event in evts:
-                self.log.debug("insert event [%s]" % (event['summary'], ))
+                
                 #log.debug("with id: %s" % (event['myid'], ))
                 #log.debug("\r\n%s" % (event,))
                 myid = event.pop('myid')
-                try:
-                    created_event = service.events().insert(calendarId=self.calId, body=event).execute()
-                except apiclient.errors.HttpError, e:
-                    self.log.debug("error: %s\r\nevent: %s" % ( e.content, event,))
-                    raise
-                if created_event != None:
-                    gid = created_event['id']
-                    c.execute('''insert into sync (calId, oid, gid) values (?, ?, ?)''', (calId, myid ,gid,))
-                    self.db.commit()
+                if 'updateID' in event:
+                    #update
+                    self.log.debug("update event [%s]" % (event['summary'], ))
+                    updateID = event.pop('updateID')
+                    try:
+                        old_event = service.events().get(calendarId=self.calId, eventId=updateID).execute()
+                        event['sequence'] = old_event['sequence']
+                        updated_event = service.events().update(calendarId=self.calId, eventId=updateID, body=event).execute()
+                    except apiclient.errors.HttpError, e:
+                        self.log.debug("error: %s\r\nupdating event: %s" % ( e.content, event,))
+                        raise
+                    if updated_event != None:
+                        now = datetime.datetime.now()
+                        c.execute('''update sync set lastUpdated=? where gid=? and calId=?''', (now, updateID, calId,))
+                        self.db.commit()
+
+                else:
+                    #new
+                    self.log.debug("insert event [%s]" % (event['summary'], ))
+                    try:
+                        created_event = service.events().insert(calendarId=self.calId, body=event).execute()
+                    except apiclient.errors.HttpError, e:
+                        self.log.debug("error: %s\r\ncreating event: %s" % ( e.content, event,))
+                        raise
+                    if created_event != None:
+                        gid = created_event['id']
+                        now = datetime.datetime.now()
+                        c.execute('''insert into sync (lastUpdated, calId, oid, gid) values (?, ?, ?, ?)''', (now, calId, myid ,gid,))
+                        self.db.commit()
         else:
             self.log.warning("no google calendar selected!")
 

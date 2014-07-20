@@ -244,11 +244,23 @@ class Outlook(object):
                 if rDate != None:
                     dStart = rDate
             if dStart >= now or appt.IsRecurring and appt.ResponseStatus in (3,0,1,2) and appt.MeetingStatus in (0,1,3) :
-                c.execute('''select gid from sync
+                c.execute('''select lastUpdated, gid from sync
                          where oid=?''', (appt.EntryID.lower(),))
                 r = c.fetchall()
                 if len(r) <= 0:
+                    # event not syncronized yet
                     events.append(self.createEvent(appt))
+                else:
+                    # event found: check last modification date
+                    lastModification = datetime.datetime(appt.LastModificationTime.year, appt.LastModificationTime.month, appt.LastModificationTime.day,
+                        appt.LastModificationTime.hour, appt.LastModificationTime.minute, appt.LastModificationTime.second )
+                    self.log.debug("event [%s] last mod: %s" % (appt.Subject, lastModification))
+                    if lastModification > r[0]['lastUpdated']:
+                        # update event (or remove / recreate)
+                        self.log.debug("event [%s] need update" % (appt.Subject,))
+                        updatedEvent = self.createEvent(appt)
+                        updatedEvent['updateID'] = r[0]['gid']
+                        events.append(updatedEvent)
         return events
 
     def createEvent(self, appt): 
