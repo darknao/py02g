@@ -57,8 +57,7 @@ class Google(object):
     calId = None # Destination Calendar
 
     def __init__(self, proxy=None):
-        logging.basicConfig()
-        self.log = logging.getLogger('Google')
+        self.log = logging.getLogger(__name__)
         self.log.setLevel(logging.DEBUG)
 
         self.db = database.db()
@@ -82,7 +81,7 @@ class Google(object):
             )"""
         cacert = constants.resource_path('cacerts.txt')
         if os.path.isfile(cacert):
-            print "cacert : %s" % cacert
+            self.log.debug("cacert : %s" % cacert)
         else:
             cacert = None
         self.h = httplib2.Http(proxy_info=proxy, ca_certs=cacert)

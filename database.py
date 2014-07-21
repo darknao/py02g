@@ -19,6 +19,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import sqlite3
+import logging
 
 import constants
 
@@ -41,6 +42,10 @@ schema = {
 
 checked = False
 
+logging.basicConfig(filename='logfile.txt', format='%(asctime)-23s - %(levelname)-7s - %(name)s - %(message)s')
+log = logging.getLogger(__name__)
+log.setLevel(logging.DEBUG)
+
 class DatabaseError(Exception): pass
 
 def db():
@@ -58,7 +63,7 @@ def createTable(table):
     c = sql.cursor()
     c.execute(stmt)
     sql.commit()
-    print "table %s created." % (table,)
+    log.debug("table %s created." % (table,))
 
 def checkDB():
     # Check DB integrity
@@ -66,13 +71,13 @@ def checkDB():
 
     c = sql.cursor()
     error = 0
-    print "checking db..."
+    log.info("checking db...")
     for table, cols in schema.iteritems():
-        print "checking table %s..." % table
+        log.debug("checking table %s..." % table)
         c.execute("pragma table_info(%s)" % (table,))
         rows = c.fetchall()
         if len(rows) <= 0:
-            print "ERROR: table %s not found! Creating..." % (table,)
+            log.error("table %s not found! Creating..." % (table,))
             createTable(table)
         else:
             for colname, coltype in cols.iteritems():
@@ -80,16 +85,16 @@ def checkDB():
                 for row in rows:
                     if row['name'] == colname:
                         if row['type'] != coltype:
-                            print "ERROR in %s: column %s has wrong type (%s instead of %s)" % (table, colname, row['type'], coltype)
+                            log.error("%s: column %s has wrong type (%s instead of %s)" % (table, colname, row['type'], coltype))
                         else:
                             found = True
                             break
                 if found == False:
-                    print "ERROR in %s: column %s not found or wrong type (%s)" % (table, colname, coltype)
+                    log.error("%s: column %s not found or wrong type (%s)" % (table, colname, coltype))
                     error += 1
     if error == 0:
         checked = True
-        print "database OK"
+        log.info("database OK")
     else:
         raise DatabaseError("Database corrupted!")
     return checked

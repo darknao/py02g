@@ -81,8 +81,7 @@ def rrule_to_string(rule):
 class Outlook(object):
     """docstring for Outlook"""
     def __init__(self):
-        logging.basicConfig()
-        self.log = logging.getLogger('pyO2gcal')
+        self.log = logging.getLogger(__name__)
         self.log.setLevel(logging.DEBUG)
 
         self.createCOM()
