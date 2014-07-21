@@ -26,7 +26,7 @@ def resource_path(relative):
 
 #cert_path = resource_path('cacert.pem')
 
-VERSION = "1.1.1"
+VERSION = "1.1.3"
 APPNAME = "pyO2g"
 CFGFILE = '%s.cfg' % APPNAME
 DBFILE = 'oSync.db'

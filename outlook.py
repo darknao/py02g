@@ -22,7 +22,7 @@ import win32com.client
 
 import pywintypes
 import winerror
-import datetime, pytz
+import datetime
 import dateutil.rrule
 
 import logging
@@ -55,10 +55,16 @@ if win32com.client.gencache.is_readonly == True:
     # NB You must ensure that the python...\win32com.client.gen_py dir does not exist
     # to allow creation of the cache in %temp%
 
+TZ = 'Europe/Paris' # Default TimeZone
 msc = win32com.client.constants
 rrule = dateutil.rrule
 
 FREQNAMES = ['YEARLY','MONTHLY','WEEKLY','DAILY','HOURLY','MINUTELY','SECONDLY']
+
+prop_mail = "http://schemas.microsoft.com/mapi/proptag/0x39FE001E"
+grStatus = [ None, None, "tentative", "accepted", "declined", "needsAction" ]
+geStatus = [ None, "confirmed", None , "confirmed", None, "cancelled", None, "cancelled" ]
+
 
 def rrule_to_string(rule):
     output = []
@@ -253,7 +259,7 @@ class Outlook(object):
                 rDate = self.getNextRecDate(appt)
                 if rDate != None:
                     dStart = rDate
-            if dStart >= now or appt.IsRecurring and appt.ResponseStatus in (3,0,1,2) and appt.MeetingStatus in (0,1,3) :
+            if dStart >= now or appt.IsRecurring:# and appt.ResponseStatus in (3,0,1,2) and appt.MeetingStatus in (0,1,3) :
                 c.execute('''select lastUpdated, gid from sync
                          where oid=?''', (appt.EntryID.lower(),))
                 r = c.fetchall()
@@ -265,7 +271,7 @@ class Outlook(object):
                     lastModification = datetime.datetime(appt.LastModificationTime.year, appt.LastModificationTime.month, appt.LastModificationTime.day,
                         appt.LastModificationTime.hour, appt.LastModificationTime.minute, appt.LastModificationTime.second )
                     self.log.debug("event [%s] last mod: %s" % (appt.Subject, lastModification))
-                    if lastModification > r[0]['lastUpdated']:
+                    if r[0]['lastUpdated'] is None or lastModification > r[0]['lastUpdated']:
                         # update event (or remove / recreate)
                         self.log.debug("event [%s] need update" % (appt.Subject,))
                         updatedEvent = self.createEvent(appt)
@@ -274,32 +280,55 @@ class Outlook(object):
         return events
 
     def createEvent(self, appt): 
-        tz=pytz.timezone('Europe/Paris') # TODO: Add a custom settings for this
         now = datetime.datetime.now()
         dStart = datetime.datetime(appt.Start.year, appt.Start.month, appt.Start.day, appt.Start.hour, appt.Start.minute)
         dEnd = datetime.datetime(appt.End.year, appt.End.month, appt.End.day, appt.End.hour, appt.End.minute)
+        
         event = {
           'summary': appt.Subject,
           'location': appt.Location,
           'start': {
             'dateTime': dStart.isoformat(),
-            'timeZone': 'Europe/Paris'
+            'timeZone': TZ
             # 'date' : for all day event
           },
           'end': {
             'dateTime': dEnd.isoformat(),
-            'timeZone': 'Europe/Paris',
+            'timeZone': TZ,
             # 'date' : for all day event
           },
           'description' : appt.Body,
           'myid' : appt.EntryID.lower(),
           'attendees': [
-            {
-              'email': 'francois.f.andrieu.external@airbus.com',
-            },
+            #{
+              #'email': "",
+              #'displayName' : "",
+              #'optional' : "",
+              #'responseStatus' : "needsAction|declined|tentative|accepted"
+            #},
             # ...
           ],
         }
+
+        # add attendees
+        for guy in appt.Recipients:
+            p = guy.PropertyAccessor
+            email = p.GetProperty(prop_mail)
+            attendee = {
+                'email' : email,
+                'displayName' : guy.Name,
+                'optional' : True if guy.Type == msc.olOptional else False
+            }
+
+            status = grStatus[guy.MeetingResponseStatus]
+            if status != None:
+                attendee['responseStatus'] = status
+            event['attendees'].append(attendee)
+
+        meetingStatus = geStatus[appt.MeetingStatus]
+        if meetingStatus != None:
+            event['status'] = meetingStatus
+
         if appt.IsRecurring:
             recurrence = self.getRRULE(appt)
             if recurrence is not None:
