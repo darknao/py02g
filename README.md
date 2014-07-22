@@ -1,6 +1,6 @@
 # py02g #
 
-py02g is a (very) simple application to synchronize your Outlook calendar with your Google account.
+py02g is a (very) simple application to synchronize your Outlook calendar with your Google account.  
 For now, it only support one way synchronization (from Outlook to Google).
 
 This is pretty much the same thing as Google Calendar Sync, but with a lot more bugs, and less features :stuck_out_tongue_closed_eyes:
@@ -30,11 +30,11 @@ Create a Client ID from the [google developers console](https://console.develope
 Download the JSON key and copy it in the same place than pyO2g (rename it to **client_secrets.json**).
 
 ### Configuration ###
-Most of the settings can be found in pyO2g.cfg.
+Most of the settings can be found in pyO2g.cfg.  
 For now, there is only 2 settings available.
 
 #### Synchronization interval ###
-By default, it's 20 minutes.
+By default, it's 20 minutes.  
 You can change that value in the Main section of the configuration file :
 ```INI
 [Main]
