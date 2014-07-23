@@ -28,7 +28,7 @@ import pywintypes
 import winerror
 import re
 import datetime
-import httplib2
+import httplib2, httplib
 import copy
 from oauth2client import clientsecrets
 import apiclient.errors
@@ -57,10 +57,11 @@ class MainFrame(wx.Frame):
 
     def __init__(self, parent, title):
         wx.Frame.__init__(self, parent, -1, title,
-                          pos=(150, 150),
+                          pos=(600, 300),
                           style = wx.CAPTION | wx.MINIMIZE_BOX | wx.RESIZE_BORDER | wx.SYSTEM_MENU | wx.CLOSE_BOX,
-                          size=(550, 350))
+                          size=(350, 280))
 
+        busy = wx.BusyInfo("Initialization, please wait...")
         self.cfg = ConfigParser.ConfigParser()
         self.cfg.read(constants.CFGFILE)
 
@@ -173,7 +174,7 @@ and rename it to client_secrets.json""",
         self.timer = wx.Timer(self)
         self.timer.Start(interval * 60 * 1000) # convert to ms
         self.Bind(wx.EVT_TIMER, self.OnTimer)
-        self.syncMyCal()
+        
 
         line = wx.StaticLine(panel, -1, size=(20,-1), style=wx.LI_HORIZONTAL)
         sizer.Add(line, 0, wx.GROW|wx.ALIGN_CENTER_VERTICAL|wx.RIGHT|wx.TOP, 5)
@@ -184,6 +185,12 @@ and rename it to client_secrets.json""",
 
         panel.SetSizer(sizer)
         panel.Layout()
+
+        del busy
+        busy = wx.BusyInfo("Syncing...")
+        self.syncMyCal()
+        del busy
+
 
     def getOutlookCals(self):
         if self.outlook == None:
@@ -213,6 +220,7 @@ and rename it to client_secrets.json""",
         self.PopStatusText()
 
     def syncMyCal(self):
+        # TODO: use wx.lib.delayedresult for that
         now = datetime.datetime.now()
         if self.google.calId != None:
             if self.outlook.isAlive():
@@ -227,15 +235,16 @@ and rename it to client_secrets.json""",
                     calItems.IncludeRecurrences = "True"
                     evts = self.outlook.getAppt(calItems)
                     self.log.AppendText(" -> Cleaning events...\r\n")
+                    
                     try:
                         self.google.cleanCal(calId, oCal.Items)
                         self.log.AppendText(" -> Syncing %s new events\r\n" % (len(evts),))
-                    except apiclient.errors.HttpError, e:
+                    except (apiclient.errors.HttpError, httplib.BadStatusLine), e:
                         self.log.AppendText("ERROR: %s\r\n" % (e,))
-
 
                     if len(evts) > 0:
                         self.google.sendEvents(calId, evts)
+
                 now = datetime.datetime.now()
                 self.log.AppendText("%s: Sync completed\r\n" % now)
                 self.log.AppendText("next sync in %d minutes\r\n" % round(self.timer.GetInterval()/60/1000,2) )
