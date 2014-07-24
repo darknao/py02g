@@ -30,3 +30,5 @@ VERSION = "1.1.4"
 APPNAME = "pyO2g"
 CFGFILE = '%s.cfg' % APPNAME
 DBFILE = 'oSync.db'
+MAX_RETRY = 5
+BASE_RETRY_TIME = 2000

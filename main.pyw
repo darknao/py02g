@@ -48,6 +48,7 @@ def oCalNiceName(cal):
 
 class MainFrame(wx.Frame):
     outlook = None
+    retry = 0
 
     def __init__(self, parent, title):
         wx.Frame.__init__(self, parent, wx.ID_ANY, title,
@@ -166,6 +167,7 @@ and rename it to client_secrets.json""",
             sizer.Add(wx.StaticText(panel, -1, "no calendar!"),0,wx.EXPAND | wx.ALL ,1)
 
         self.timer = wx.Timer(self)
+        self.retryTimer = wx.Timer(self)
         self.timer.Start(interval * 60 * 1000) # convert to ms
         self.Bind(wx.EVT_TIMER, self.OnTimer)
         
@@ -210,7 +212,19 @@ and rename it to client_secrets.json""",
     def OnTimer(self, evt =  None ):
         self.PushStatusText("Syncing...")
         # SYnc stuff here...
-        self.syncMyCal()
+        try:
+            self.syncMyCal()
+        except httplib.BadStatusLine:
+            # google doing shit? let's try again
+            if self.retry < constants.MAX_RETRY:
+                self.log.AppendText("Google not responding. Trying again in 5secs...\r\n")
+                self.retryTimer.Start((constants.BASE_RETRY_TIME * self.retry + constants.BASE_RETRY_TIME),
+                        wx.TIMER_ONE_SHOT)
+                self.retry += 1
+            else:
+                self.log.AppendText("Google not responding. Giving up.\r\n")
+        else:
+            self.retry = 0
         self.PopStatusText()
 
     def syncMyCal(self):
@@ -233,14 +247,14 @@ and rename it to client_secrets.json""",
                     try:
                         self.google.cleanCal(calId, oCal.Items)
                         self.log.AppendText(" -> Syncing %s new events\r\n" % (len(evts),))
-                    except (apiclient.errors.HttpError, httplib.BadStatusLine), e:
-                        self.log.AppendText("connection error, trying later...\r\n")
+                    except apiclient.errors.HttpError, e:
+                        self.log.AppendText("gAPI error: %s\r\n" %  (e,))
 
                     if len(evts) > 0:
                         try:
                             self.google.sendEvents(calId, evts)
-                        except httplib.BadStatusLine, e:
-                            self.log.AppendText("connection error, trying later...\r\n")
+                        except apiclient.errors.HttpError, e:
+                            self.log.AppendText("gAPI error: %s\r\n" %  (e,))
                 now = datetime.datetime.now()
                 self.log.AppendText("%s: Sync completed\r\n" % now)
                 self.log.AppendText("next sync in %d minutes\r\n" % 
