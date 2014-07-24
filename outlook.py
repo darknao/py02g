@@ -1,7 +1,7 @@
 # -*- coding: UTF-8 -*-
 #
 # Copyright (c) 2014 darknao
-# https://github.com/darknao/py02g
+# https://github.com/darknao/pyO2g
 #
 # This file is part of pyO2g.
 # 
@@ -22,7 +22,7 @@ import win32com.client
 
 import pywintypes
 import winerror
-import datetime
+import datetime as dt
 import dateutil.rrule
 
 import logging
@@ -67,6 +67,7 @@ geStatus = [ None, "confirmed", None , "confirmed", None, "cancelled", None, "ca
 
 
 def rrule_to_string(rule):
+    """Convert RRULE object to string (defined by RFC 2445)"""
     output = []
     
     parts = ['RRULE:FREQ='+FREQNAMES[rule._freq]]
@@ -94,6 +95,9 @@ def rrule_to_string(rule):
     output.append(';'.join(parts))
     return '\n'.join(output)
 
+def olDate(date):
+    """Convert Outlook date format to datetime object"""
+    return dt.datetime(date.year, date.month, date.day, date.hour, date.minute)
 
 class Outlook(object):
     """docstring for Outlook"""
@@ -139,16 +143,16 @@ class Outlook(object):
         cals = []
         if self.isAlive():
             ns = self.outlookCOM.GetNamespace("MAPI")
-            cals.append(ns.GetDefaultFolder(9))
+            cals.append(ns.GetDefaultFolder(msc.olFolderCalendar))
             if extra != None and extra != "" :
                 r = ns.CreateRecipient(extra)
-                cals.append(ns.GetSharedDefaultFolder(r,9))
+                cals.append(ns.GetSharedDefaultFolder(r, msc.olFolderCalendar))
         return cals
 
     def getNextRecDate(self, appt):
-        nDate = datetime.datetime(1980,1,1)
-        now = datetime.datetime.now()
-        eDate = datetime.datetime(now.year, now.month, now.day, appt.Start.hour, appt.Start.minute)
+        nDate = dt.datetime(1980,1,1)
+        now = dt.datetime.now()
+        eDate = dt.datetime(now.year, now.month, now.day, appt.Start.hour, appt.Start.minute)
         week = copy.copy(weekDays)
         weekN = copy.copy(weekDaysN)
         week.rotate(-now.weekday())
@@ -158,14 +162,13 @@ class Outlook(object):
 
         if rPattrn.RecurrenceType == msc.olRecursDaily:
             # Every N rPattrn.Interval
-            startDate = datetime.datetime(appt.Start.year, appt.Start.month, appt.Start.day, appt.Start.hour, appt.Start.minute)
+            startDate = olDate(appt.Start)
             if startDate >= now:
                 nDate = startDate
             else:
                 if rPattrn.NoEndDate == False:
                     # Either Occurrences or PatternEndDate
-                    endDate = datetime.datetime(rPattrn.PatternEndDate.year, rPattrn.PatternEndDate.month, rPattrn.PatternEndDate.day,
-                        rPattrn.PatternEndDate.hour, rPattrn.PatternEndDate.minute)
+                    endDate = olDate(rPattrn.PatternEndDate)
                     if endDate < now:
                         # event expired
                         return nDate
@@ -196,7 +199,7 @@ class Outlook(object):
 
     def next_dow(self, d, days):
         while d.weekday() not in days:
-            d += datetime.timedelta(1)
+            d += dt.timedelta(1)
         return d 
 
     def getRRULE(self, event):
@@ -228,8 +231,7 @@ class Outlook(object):
                 raise ValueError ("unknown recurrence type: %s" % rp.RecurrenceType )
 
             if rp.NoEndDate == False:
-                until = datetime.datetime(rp.PatternEndDate.year, rp.PatternEndDate.month, rp.PatternEndDate.day,
-                    rp.PatternEndDate.hour, rp.PatternEndDate.minute)
+                until = olDate(rp.PatternEndDate)
                 count = rp.Occurrences
             
             interval = rp.Interval
@@ -253,8 +255,8 @@ class Outlook(object):
         for i in range(1,appts.Count+1):
             appt=appts.Item(i)
 
-            now = datetime.datetime.now()
-            dStart = datetime.datetime(appt.Start.year, appt.Start.month, appt.Start.day, appt.Start.hour, appt.Start.minute)
+            now = dt.datetime.now()
+            dStart = olDate(appt.Start)
             if appt.IsRecurring:
                 rDate = self.getNextRecDate(appt)
                 if rDate != None:
@@ -268,10 +270,10 @@ class Outlook(object):
                     events.append(self.createEvent(appt))
                 else:
                     # event found: check last modification date
-                    lastModification = datetime.datetime(appt.LastModificationTime.year, appt.LastModificationTime.month, appt.LastModificationTime.day,
-                        appt.LastModificationTime.hour, appt.LastModificationTime.minute, appt.LastModificationTime.second )
-                    self.log.debug("event [%s] last mod: %s" % (appt.Subject, lastModification))
-                    if r[0]['lastUpdated'] is None or lastModification > r[0]['lastUpdated']:
+                    lastModification = olDate(appt.LastModificationTime)
+                    #self.log.debug("event [%s] last mod: %s" % (appt.Subject, lastModification))
+                    if (r[0]['lastUpdated'] is None
+                        or lastModification > r[0]['lastUpdated']):
                         # update event (or remove / recreate)
                         self.log.debug("event [%s] need update" % (appt.Subject,))
                         updatedEvent = self.createEvent(appt)
@@ -280,9 +282,9 @@ class Outlook(object):
         return events
 
     def createEvent(self, appt): 
-        now = datetime.datetime.now()
-        dStart = datetime.datetime(appt.Start.year, appt.Start.month, appt.Start.day, appt.Start.hour, appt.Start.minute)
-        dEnd = datetime.datetime(appt.End.year, appt.End.month, appt.End.day, appt.End.hour, appt.End.minute)
+        now = dt.datetime.now()
+        dStart = olDate(appt.Start)
+        dEnd = olDate(appt.End)
         
         event = {
           'summary': appt.Subject,
@@ -340,7 +342,13 @@ class Outlook(object):
             #    event['start']['dateTime'] = dStart.isoformat()
             #    event['end']['dateTime'] = dEnd.isoformat()
         if appt.ReminderSet:
-            event['reminders'] = { "useDefault": False, "overrides" : [{"method" : "popup", "minutes" : appt.ReminderMinutesBeforeStart}]}
+            event['reminders'] = {
+                "useDefault": False,
+                "overrides" : [{
+                                "method" : "popup",
+                                "minutes" : appt.ReminderMinutesBeforeStart
+                            }]
+                }
 
         return event
 

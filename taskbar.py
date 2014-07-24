@@ -1,7 +1,7 @@
 # -*- coding: UTF-8 -*-
 #
 # Copyright (c) 2014 darknao
-# https://github.com/darknao/py02g
+# https://github.com/darknao/pyO2g
 #
 # This file is part of pyO2g.
 # 

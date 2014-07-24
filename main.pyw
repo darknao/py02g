@@ -1,7 +1,7 @@
 # -*- coding: UTF-8 -*-
 #
 # Copyright (c) 2014 darknao
-# https://github.com/darknao/py02g
+# https://github.com/darknao/pyO2g
 #
 # This file is part of pyO2g.
 # 
@@ -47,20 +47,13 @@ def oCalNiceName(cal):
     return regxp.groups()[0]
 
 class MainFrame(wx.Frame):
-    MENU_SETTINGS = wx.NewId()
-    MENU_ABOUT = wx.NewId()
-    MENU_SYNCNOW = wx.NewId()
-    MENU_LOCATE = wx.NewId()
-    ID_RELOADDCAL = wx.NewId()
-    ID_GCALLIST = wx.NewId()
     outlook = None
 
     def __init__(self, parent, title):
-        wx.Frame.__init__(self, parent, -1, title,
+        wx.Frame.__init__(self, parent, wx.ID_ANY, title,
                           pos=(600, 300),
                           style = wx.CAPTION | wx.MINIMIZE_BOX | wx.RESIZE_BORDER | wx.SYSTEM_MENU | wx.CLOSE_BOX,
                           size=(350, 280))
-
         busy = wx.BusyInfo("Initialization, please wait...")
         self.cfg = ConfigParser.ConfigParser()
         self.cfg.read(constants.CFGFILE)
@@ -71,18 +64,18 @@ class MainFrame(wx.Frame):
         menu = wx.Menu()
         helpmenu = wx.Menu()
 
-        menu.Append(self.MENU_SYNCNOW, "&Sync Now\tCtrl+S", "Force synchronization")
+        syncNow = menu.Append(wx.ID_ANY, "&Sync Now\tCtrl+S", "Force synchronization")
         menu.AppendSeparator()
 
         quit = wx.MenuItem(menu, wx.ID_EXIT, 'E&xit\tCtrl+Q', 'Quit the Application')
         #quit.SetBitmap(wx.Image('stock_exit-16.png', wx.BITMAP_TYPE_PNG).ConvertToBitmap())
         menu.AppendItem(quit)
 
-        helpmenu.Append(self.MENU_ABOUT, "&About")
+        about = helpmenu.Append(wx.ID_ANY, "&About")
 
-        self.Bind(wx.EVT_MENU, self.OnTimer, id=self.MENU_SYNCNOW)
-        self.Bind(wx.EVT_MENU, self.OnTimeToClose, id=wx.ID_EXIT)
-        self.Bind(wx.EVT_MENU, self.OnAbout, id = self.MENU_ABOUT)
+        self.Bind(wx.EVT_MENU, self.OnTimer, syncNow)
+        self.Bind(wx.EVT_MENU, self.OnTimeToClose, quit)
+        self.Bind(wx.EVT_MENU, self.OnAbout, about)
         self.Bind(wx.EVT_CLOSE, self.OnTimeToClose)
         self.Bind(wx.EVT_ICONIZE, self.OnMinimize)
 
@@ -96,12 +89,13 @@ class MainFrame(wx.Frame):
 
         panel = wx.Panel(self)
 
-        self.destCalText = wx.StaticText(panel, -1, "Google calendar:")
-        self.srcCalText = wx.StaticText(panel, -1, "Outlook calendars:")
+        self.destCalText = wx.StaticText(panel, wx.ID_ANY, "Google calendar:")
+        self.srcCalText = wx.StaticText(panel, wx.ID_ANY, "Outlook calendars:")
 
-        self.debugText = wx.StaticText(panel, -1, "")
+        self.debugText = wx.StaticText(panel, wx.ID_ANY, "")
 
-        self.log = wx.TextCtrl(panel, -1, "", size=(200, 100), style=wx.TE_MULTILINE|wx.TE_READONLY)
+        self.log = wx.TextCtrl(panel, wx.ID_ANY, "", 
+            size=(200, 100), style=wx.TE_MULTILINE|wx.TE_READONLY)
 
         sizer = wx.BoxSizer(wx.VERTICAL)
 
@@ -122,16 +116,16 @@ class MainFrame(wx.Frame):
         destCalBox.Add(self.destCalText, 0, wx.ALIGN_CENTER_VERTICAL  | wx.ALL, 1)
 
 
-        self.listDestCal = wx.ComboBox(panel, self.ID_GCALLIST, size=(150, -1), style=wx.CB_READONLY)
+        self.listDestCal = wx.ComboBox(panel, wx.ID_ANY, size=(150, -1), style=wx.CB_READONLY)
         destCalBox.Add(self.listDestCal, 0, wx.GROW|wx.ALIGN_CENTER_VERTICAL|wx.RIGHT, 5)
-        self.Bind(wx.EVT_COMBOBOX, self.OnGcalSelect, id = self.ID_GCALLIST)
+        self.Bind(wx.EVT_COMBOBOX, self.OnGcalSelect, self.listDestCal)
 
 
-        reloadDestCalBtn = wx.Button(panel, self.ID_RELOADDCAL, 'reload')
+        reloadDestCalBtn = wx.Button(panel, wx.ID_ANY, 'reload')
         destCalBox.Add(reloadDestCalBtn, 0, wx.ALIGN_CENTER_VERTICAL, 5 )
         sizer.Add(destCalBox, 0, wx.EXPAND | wx.ALL, 1)
 
-        self.Bind(wx.EVT_BUTTON, lambda event: self.reloadDestCal(event, force=True), id = self.ID_RELOADDCAL)
+        self.Bind(wx.EVT_BUTTON, lambda event: self.reloadDestCal(event, force=True), reloadDestCalBtn)
 
         try:
             self.google = google.Google(proxy=proxy)
@@ -157,10 +151,10 @@ and rename it to client_secrets.json""",
 
         sizer.Add(self.srcCalText, 0, wx.EXPAND | wx.ALL, 1)
         for oCal in self.oCals:
-            chkb = wx.CheckBox(panel, 0, oCalNiceName(oCal), pos=(10, 10))
+            chkb = wx.CheckBox(panel, wx.ID_ANY, oCalNiceName(oCal), pos=(10, 10))
             chkb.Enable(False)
             chkb.SetValue(1)
-            sizer.Add(chkb,0,wx.EXPAND | wx.ALL ,1)
+            sizer.Add(chkb, 0, wx.EXPAND | wx.ALL ,1)
             #sizer.Add(copy.copy(chkb),0,wx.EXPAND | wx.ALL ,1)
 
         try:
@@ -176,7 +170,7 @@ and rename it to client_secrets.json""",
         self.Bind(wx.EVT_TIMER, self.OnTimer)
         
 
-        line = wx.StaticLine(panel, -1, size=(20,-1), style=wx.LI_HORIZONTAL)
+        line = wx.StaticLine(panel, wx.ID_ANY, size=(20,-1), style=wx.LI_HORIZONTAL)
         sizer.Add(line, 0, wx.GROW|wx.ALIGN_CENTER_VERTICAL|wx.RIGHT|wx.TOP, 5)
 
         sizer.Add(self.debugText, 0, wx.ALL, 1)
@@ -209,7 +203,7 @@ and rename it to client_secrets.json""",
         about.Name = constants.APPNAME
         about.Version = "v%s" % constants.VERSION
         about.Copyright = "(c) 2014 darknao / rBus Radio Team"
-        about.WebSite = "https://github.com/darknao/py02g"
+        about.WebSite = "https://github.com/darknao/pyO2g"
         wx.AboutBox(about)
 
 
@@ -240,14 +234,17 @@ and rename it to client_secrets.json""",
                         self.google.cleanCal(calId, oCal.Items)
                         self.log.AppendText(" -> Syncing %s new events\r\n" % (len(evts),))
                     except (apiclient.errors.HttpError, httplib.BadStatusLine), e:
-                        self.log.AppendText("ERROR: %s\r\n" % (e,))
+                        self.log.AppendText("connection error, trying later...\r\n")
 
                     if len(evts) > 0:
-                        self.google.sendEvents(calId, evts)
-
+                        try:
+                            self.google.sendEvents(calId, evts)
+                        except httplib.BadStatusLine, e:
+                            self.log.AppendText("connection error, trying later...\r\n")
                 now = datetime.datetime.now()
                 self.log.AppendText("%s: Sync completed\r\n" % now)
-                self.log.AppendText("next sync in %d minutes\r\n" % round(self.timer.GetInterval()/60/1000,2) )
+                self.log.AppendText("next sync in %d minutes\r\n" % 
+                    round(self.timer.GetInterval()/60/1000,2) )
             else:
                 self.log.AppendText("Outlook not running!\r\n")
         else:
@@ -255,9 +252,10 @@ and rename it to client_secrets.json""",
 
     def OnGcalSelect(self, evt):
         cBox = evt.GetEventObject()
-        if cBox.GetId() == self.ID_GCALLIST:
+        if cBox.GetId() == self.listDestCal.GetId():
             calIndex = cBox.GetCurrentSelection()
-            self.debugText.SetLabel("gCalendar selected: %s: %s [%s]" % (calIndex, cBox.GetValue(), self.gCals[calIndex]['calId']))
+            self.debugText.SetLabel("gCalendar selected: %s: %s [%s]" %
+                (calIndex, cBox.GetValue(), self.gCals[calIndex]['calId']))
             self.cfg.set('Google', 'calId', self.gCals[calIndex]['calId'])
             self.google.calId = self.gCals[calIndex]['calId']
             with open(constants.CFGFILE, 'w') as configfile:
@@ -287,6 +285,7 @@ and rename it to client_secrets.json""",
 
     def OnMinimize(self, evt):
         self.Show(False)
+
 
 app = wx.App(redirect=True,filename="logfile.txt")
 

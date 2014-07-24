@@ -1,7 +1,7 @@
 # -*- coding: UTF-8 -*-
 #
 # Copyright (c) 2014 darknao
-# https://github.com/darknao/py02g
+# https://github.com/darknao/pyO2g
 #
 # This file is part of pyO2g.
 # 
@@ -23,7 +23,8 @@ import logging
 
 import constants
 
-sql = sqlite3.connect(constants.DBFILE, detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
+sql = sqlite3.connect(constants.DBFILE,
+    detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
 sql.row_factory = sqlite3.Row
 
 schema = {
@@ -42,7 +43,8 @@ schema = {
 
 checked = False
 
-logging.basicConfig(filename='logfile.txt', format='%(asctime)-23s - %(levelname)-7s - %(name)s - %(message)s')
+logging.basicConfig(filename='logfile.txt',
+    format='%(asctime)-23s - %(levelname)-7s - %(name)s - %(message)s')
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 
@@ -85,12 +87,14 @@ def checkDB():
                 for row in rows:
                     if row['name'] == colname:
                         if row['type'] != coltype:
-                            log.error("%s: column %s has wrong type (%s instead of %s)" % (table, colname, row['type'], coltype))
+                            log.error("%s: column %s has wrong type (%s instead of %s)" 
+                                % (table, colname, row['type'], coltype))
                         else:
                             found = True
                             break
                 if found == False:
-                    log.error("%s: column %s not found or wrong type (%s)" % (table, colname, coltype))
+                    log.error("%s: column %s not found or wrong type (%s)" 
+                        % (table, colname, coltype))
                     error += 1
     if error == 0:
         checked = True

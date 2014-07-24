@@ -1,7 +1,7 @@
 # -*- coding: UTF-8 -*-
 #
 # Copyright (c) 2014 darknao
-# https://github.com/darknao/py02g
+# https://github.com/darknao/pyO2g
 #
 # This file is part of pyO2g.
 # 
@@ -26,7 +26,7 @@ def resource_path(relative):
 
 #cert_path = resource_path('cacert.pem')
 
-VERSION = "1.1.3"
+VERSION = "1.1.4"
 APPNAME = "pyO2g"
 CFGFILE = '%s.cfg' % APPNAME
 DBFILE = 'oSync.db'
