@@ -4,7 +4,7 @@
 # https://github.com/darknao/pyO2g
 #
 # This file is part of pyO2g.
-# 
+#
 # pyO2g is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -34,27 +34,31 @@ import datetime
 import constants
 import database
 
-class cmd_flags(object):
-  def __init__(self):
-    self.short_url = True 
-    self.noauth_local_webserver = False
-    self.logging_level = 'DEBUG' 
-    self.auth_host_name = 'localhost'
-    self.auth_host_port = [8080, 9090]
 
-class GoogleSecretsError(Exception): pass
+class cmd_flags(object):
+
+    def __init__(self):
+        self.short_url = True
+        self.noauth_local_webserver = False
+        self.logging_level = 'DEBUG'
+        self.auth_host_name = 'localhost'
+        self.auth_host_port = [8080, 9090]
+
+
+class GoogleSecretsError(Exception):
+    pass
 
 
 class Google(object):
     """docstring for Google"""
 
-    h = None # httplib2 object
-    flow = None # oAuth2 connection flow
-    storage = None # credentials storage
-    credentials = None # credentials
-    db = None # sqlite3 connector
-    log = None # logger
-    calId = None # Destination Calendar
+    h = None  # httplib2 object
+    flow = None  # oAuth2 connection flow
+    storage = None  # credentials storage
+    credentials = None  # credentials
+    db = None  # sqlite3 connector
+    log = None  # logger
+    calId = None  # Destination Calendar
 
     def __init__(self, proxy=None):
         self.log = logging.getLogger(__name__)
@@ -63,22 +67,15 @@ class Google(object):
         self.db = database.db()
 
         CLIENT_SECRETS = 'client_secrets.json'
-        self.flow = client.flow_from_clientsecrets(CLIENT_SECRETS,
-          scope=[
-              'https://www.googleapis.com/auth/calendar',
-              'https://www.googleapis.com/auth/calendar.readonly',
+        self.flow = client.flow_from_clientsecrets(
+            CLIENT_SECRETS,
+            scope=[
+                'https://www.googleapis.com/auth/calendar',
+                'https://www.googleapis.com/auth/calendar.readonly',
             ],
-            #message=self.secretsMissings(CLIENT_SECRETS)
+            # message=self.secretsMissings(CLIENT_SECRETS)
             )
 
-        """my_proxy_info = httplib2.ProxyInfo(proxy_type =  httplib2.socks.PROXY_TYPE_SOCKS5,
-            proxy_host = '127.0.0.1',
-            proxy_port = 13337,
-            #proxy_user = 'myLogin',
-            #proxy_pass = 'myPassword',
-            proxy_rdns = True,
-            #proxy_user_agent = 'myCompanyUserAgent'
-            )"""
         cacert = constants.resource_path('cacerts.txt')
         if os.path.isfile(cacert):
             self.log.debug("cacert : %s" % cacert)
@@ -87,33 +84,34 @@ class Google(object):
         self.h = httplib2.Http(proxy_info=proxy, ca_certs=cacert)
         self.storage = Storage('calendar.dat')
         self.credentials = self.storage.get()
-        if self.credentials is None or self.credentials.invalid == True:
-            self.credentials = tools.run_flow(self.flow, self.storage, cmd_flags(), http=self.h)
+        if self.credentials is None or self.credentials.invalid:
+            self.credentials = tools.run_flow(self.flow, self.storage,
+                                              cmd_flags(), http=self.h)
 
         # Validate the connection by listing calendars
         self.listCals(force=True)
 
     def secretsMissings(self, filename):
-        raise GoogleSecretsError("""WARNING: Please configure Google API credentials!
-
-Please get a JSON key from the APIs Console <https://code.google.com/apis/console>
-and rename it to : %s""" % filename)
-
+        raise GoogleSecretsError(
+            """WARNING: Please configure Google API credentials!\r\n"""
+            """\r\n"""
+            """Please get a JSON key from the APIs Console"""
+            """<https://code.google.com/apis/console>"""
+            """and rename it to : %s""" % filename)
 
     def sendEvents(self, calId, evts):
-        if self.calId != None:
+        if self.calId is not None:
             c = self.db.cursor()
-            # gkey : notasecret        
             http = self.credentials.authorize(self.h)
             service = build("calendar", "v3", http=http)
 
             for event in evts:
-                
-                #log.debug("with id: %s" % (event['myid'], ))
-                #log.debug("\r\n%s" % (event,))
+
+                # log.debug("with id: %s" % (event['myid'], ))
+                # log.debug("\r\n%s" % (event,))
                 myid = event.pop('myid')
                 if 'updateID' in event:
-                    #update
+                    # update
                     self.log.debug("update event [%s]" % (event['summary'], ))
                     updateID = event.pop('updateID')
                     try:
@@ -121,44 +119,57 @@ and rename it to : %s""" % filename)
                             calendarId=self.calId, eventId=updateID).execute()
                         event['sequence'] = old_event['sequence']
                         updated_event = service.events().update(
-                            calendarId=self.calId, eventId=updateID, body=event).execute()
+                            calendarId=self.calId,
+                            eventId=updateID,
+                            body=event).execute()
                     except apiclient.errors.HttpError, e:
-                        self.log.debug("error: %s\r\nupdating event: %s" % ( e.content, event,))
+                        self.log.debug("error: %s\r\nupdating event: %s"
+                                       % (e.content, event,))
                         raise
-                    if updated_event != None:
+                    if updated_event is not None:
                         now = datetime.datetime.now()
-                        c.execute('''update sync set lastUpdated=? where gid=? and calId=?''',
-                            (now, updateID, calId,))
+                        c.execute('''update sync set lastUpdated=?'''
+                                  '''where gid=? and calId=?''',
+                                  (now, updateID, calId,))
                         self.db.commit()
 
                 else:
-                    #new
+                    # new
                     self.log.debug("insert event [%s]" % (event['summary'], ))
                     try:
                         created_event = service.events().insert(
                             calendarId=self.calId, body=event).execute()
                     except apiclient.errors.HttpError, e:
-                        self.log.debug("error: %s\r\ncreating event: %s" % ( e.content, event,))
+                        self.log.debug("error: %s\r\ncreating event: %s"
+                                       % (e.content, event,))
                         raise
-                    if created_event != None:
+                    if created_event is not None:
                         gid = created_event['id']
                         now = datetime.datetime.now()
-                        c.execute('''insert into sync (lastUpdated, calId, oid, gid) values (?, ?, ?, ?)''',
-                            (now, calId, myid ,gid,))
+                        c.execute(
+                            '''insert into sync'''
+                            '''(lastUpdated, calId, oid, gid)'''
+                            '''values (?, ?, ?, ?)''',
+                            (now, calId, myid, gid,))
                         self.db.commit()
         else:
             self.log.warning("no google calendar selected!")
 
     def deleteEvent(self, eventId):
-        if self.calId != None:
+        if self.calId is not None:
             c = self.db.cursor()
 
             http = self.credentials.authorize(self.h)
             service = build("calendar", "v3", http=http)
             try:
-                service.events().delete(calendarId=self.calId, eventId=eventId).execute()
+                service.events().delete(
+                    calendarId=self.calId,
+                    eventId=eventId).execute()
             except httplib.BadStatusLine, e:
-                self.log.error("%s",e)
+                self.log.error("%s", e)
+                # add an exception for HttpError 410
+                # "Resource has been deleted"
+
             else:
                 c.execute('''delete from sync where gid = ?''', (eventId,))
                 self.db.commit()
@@ -166,12 +177,13 @@ and rename it to : %s""" % filename)
             self.log.warning("no google calendar selected!")
 
     def cleanCal(self, calId, appts):
-        if self.calId != None:
+        if self.calId is not None:
             c = self.db.cursor()
-            c.execute('''select oid,gid from sync where calId = ?''', (calId, ))
+            c.execute('''select oid,gid from sync where calId = ?''',
+                      (calId, ))
             rows = c.fetchall()
             for row in rows:
-                if self.inCal(appts, row['oid'].upper()) == False:
+                if not self.inCal(appts, row['oid'].upper()):
                     self.log.debug("deleting eventId [%s]..." % (row['gid'], ))
                     self.deleteEvent(row['gid'])
         else:
@@ -179,13 +191,11 @@ and rename it to : %s""" % filename)
 
     def inCal(self, items, entryId):
         ret = False
-        for i in range(1,items.Count +1):
+        for i in range(1, items.Count + 1):
             if items.Item(i).EntryID == entryId:
                 ret = True
                 break
         return ret
-
-
 
     def listCals(self, force=False):
         c = self.db.cursor()
@@ -194,7 +204,7 @@ and rename it to : %s""" % filename)
         calList = []
 
         # Refresh calendar list
-        if force == True:
+        if force:
             http = self.credentials.authorize(self.h)
             service = build("calendar", "v3", http=http)
 
@@ -204,11 +214,13 @@ and rename it to : %s""" % filename)
                 c.execute('''delete from gcalendar''')
                 gcals = lists['items']
                 for gcal in gcals:
-                    if gcal['accessRole'] == "owner" and gcal['kind'] == "calendar#calendarListEntry":  
+                    if (gcal['accessRole'] == "owner"
+                            and gcal['kind'] == "calendar#calendarListEntry"):
                         calList.append((index, gcal['id'], gcal['summary']))
                         index = index + 1
                 if index > 0:
-                    c.executemany('''insert into gcalendar values(?, ?, ?)''', calList)
+                    c.executemany('''insert into gcalendar values(?, ?, ?)''',
+                                  calList)
                     self.db.commit()
 
         # Get calendar list
@@ -216,5 +228,3 @@ and rename it to : %s""" % filename)
         ret = c.fetchall()
 
         return ret
-
-# [u'kind', u'foregroundColor', u'defaultReminders', u'primary', u'colorId', u'notificationSettings', u'summary', u'etag', u'backgroundColor', u'timeZone', u'accessRole', u'id']

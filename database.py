@@ -4,7 +4,7 @@
 # https://github.com/darknao/pyO2g
 #
 # This file is part of pyO2g.
-# 
+#
 # pyO2g is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -23,37 +23,42 @@ import logging
 
 import constants
 
-sql = sqlite3.connect(constants.DBFILE,
-    detect_types=sqlite3.PARSE_DECLTYPES|sqlite3.PARSE_COLNAMES)
+sql = sqlite3.connect(
+    constants.DBFILE,
+    detect_types=sqlite3.PARSE_DECLTYPES | sqlite3.PARSE_COLNAMES)
 sql.row_factory = sqlite3.Row
 
 schema = {
-    'sync' : {
-        'lastUpdated'   : 'timestamp',
-        'calId'         : 'text',
-        'oid'           : 'text',
-        'gid'           : 'text',
+    'sync': {
+        'lastUpdated':  'timestamp',
+        'calId':        'text',
+        'oid':          'text',
+        'gid':          'text',
         },
-    'gcalendar' : {
-        'id'            : 'integer',
-        'calId'         : 'text',
-        'description'   : 'text',
+    'gcalendar': {
+        'id':           'integer',
+        'calId':        'text',
+        'description':  'text',
         },
     }
 
 checked = False
-
-logging.basicConfig(filename='logfile.txt',
+logging.basicConfig(
+    filename='logfile.txt',
     format='%(asctime)-23s - %(levelname)-7s - %(name)s - %(message)s')
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
 
-class DatabaseError(Exception): pass
+
+class DatabaseError(Exception):
+    pass
+
 
 def db():
-    if checked == False:
+    if not checked:
         checkDB()
     return sql
+
 
 def createTable(table):
     colsList = ""
@@ -66,6 +71,7 @@ def createTable(table):
     c.execute(stmt)
     sql.commit()
     log.debug("table %s created." % (table,))
+
 
 def checkDB():
     # Check DB integrity
@@ -87,14 +93,15 @@ def checkDB():
                 for row in rows:
                     if row['name'] == colname:
                         if row['type'] != coltype:
-                            log.error("%s: column %s has wrong type (%s instead of %s)" 
-                                % (table, colname, row['type'], coltype))
+                            log.error("%s: column %s has wrong type"
+                                      "(%s instead of %s)"
+                                      % (table, colname, row['type'], coltype))
                         else:
                             found = True
                             break
-                if found == False:
-                    log.error("%s: column %s not found or wrong type (%s)" 
-                        % (table, colname, coltype))
+                if not found:
+                    log.error("%s: column %s not found or wrong type (%s)"
+                              % (table, colname, coltype))
                     error += 1
     if error == 0:
         checked = True

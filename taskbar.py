@@ -4,7 +4,7 @@
 # https://github.com/darknao/pyO2g
 #
 # This file is part of pyO2g.
-# 
+#
 # pyO2g is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -26,8 +26,8 @@ import constants
 
 class TaskBarIcon(wx.TaskBarIcon):
     TBMENU_RESTORE = wx.NewId()
-    TBMENU_CLOSE   = wx.NewId()
-    TBMENU_QUIT  = wx.NewId()
+    TBMENU_CLOSE = wx.NewId()
+    TBMENU_QUIT = wx.NewId()
     TBMENU_SYNC = wx.NewId()
 
     def __init__(self, frame):
@@ -58,15 +58,13 @@ class TaskBarIcon(wx.TaskBarIcon):
 
         return menu
 
-
     def MakeIcon(self, img):
         if "wxMSW" in wx.PlatformInfo:
             img = img.Scale(16, 16)
         elif "wxGTK" in wx.PlatformInfo:
             img = img.Scale(22, 22)
-        icon = wx.IconFromBitmap( img.ConvertToBitmap() )
+        icon = wx.IconFromBitmap(img.ConvertToBitmap())
         return icon
-
 
     def OnTaskBarActivate(self, evt):
         if self.frame.IsIconized():
@@ -74,7 +72,6 @@ class TaskBarIcon(wx.TaskBarIcon):
         if not self.frame.IsShown():
             self.frame.Show(True)
         self.frame.Raise()
-
 
     def OnTaskBarToggle(self, evt):
         if self.frame.IsIconized():
@@ -85,7 +82,6 @@ class TaskBarIcon(wx.TaskBarIcon):
         else:
             self.frame.Show(False)
 
-
     def OnTaskBarClose(self, evt):
         self.frame.Show(False)
 
@@ -94,5 +90,3 @@ class TaskBarIcon(wx.TaskBarIcon):
         if evt is not None:
             self.frame.Close()
         sys.exit(0)
-
-
