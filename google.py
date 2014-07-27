@@ -30,13 +30,14 @@ import httplib2
 import httplib
 import os.path
 import datetime
+import simplejson
 
 import constants
 import database
 
 
 class cmd_flags(object):
-
+    """Set some flags for oAuth2 flow"""
     def __init__(self):
         self.short_url = True
         self.noauth_local_webserver = False
@@ -50,7 +51,7 @@ class GoogleSecretsError(Exception):
 
 
 class Google(object):
-    """docstring for Google"""
+    """Interract with google calendar"""
 
     h = None  # httplib2 object
     flow = None  # oAuth2 connection flow
@@ -100,11 +101,12 @@ class Google(object):
             """and rename it to : %s""" % filename)
 
     def sendEvents(self, calId, evts):
+        """create or update a list of events (evts)
+           from source calendar (calId)"""
         if self.calId is not None:
             c = self.db.cursor()
             http = self.credentials.authorize(self.h)
             service = build("calendar", "v3", http=http)
-
             for event in evts:
 
                 # log.debug("with id: %s" % (event['myid'], ))
@@ -112,6 +114,7 @@ class Google(object):
                 myid = event.pop('myid')
                 if 'updateID' in event:
                     # update
+                    updated_event = None
                     self.log.debug("update event [%s]" % (event['summary'], ))
                     updateID = event.pop('updateID')
                     try:
@@ -125,7 +128,19 @@ class Google(object):
                     except apiclient.errors.HttpError, e:
                         self.log.debug("error: %s\r\nupdating event: %s"
                                        % (e.content, event,))
-                        raise
+                        # and what if this event was just removed from gCal?
+                        # remove it from our database then
+                        # or recreate it right away ?
+                        # or mark it as deleted
+                        # and never update/create it again ?
+                        error = simplejson.loads(e.content)
+                        if error.get('error').get('code') == 410:
+                            c.execute('''delete from sync
+                                      where gid = ? and calId=?''',
+                                      (updateID, calId))
+                            self.db.commit()
+                        else:
+                            raise
                     if updated_event is not None:
                         now = datetime.datetime.now()
                         c.execute('''update sync set lastUpdated=?'''
@@ -156,6 +171,7 @@ class Google(object):
             self.log.warning("no google calendar selected!")
 
     def deleteEvent(self, eventId):
+        """delete an event (eventId)"""
         if self.calId is not None:
             c = self.db.cursor()
 
@@ -165,14 +181,17 @@ class Google(object):
                 service.events().delete(
                     calendarId=self.calId,
                     eventId=eventId).execute()
-            except httplib.BadStatusLine, e:
-                self.log.error("%s", e)
-                # add an exception for HttpError 410
-                # "Resource has been deleted"
-
-            else:
-                c.execute('''delete from sync where gid = ?''', (eventId,))
-                self.db.commit()
+            except apiclient.errors.HttpError, e:
+                self.log.warning("%s", e.content)
+                error = simplejson.loads(e.content)
+                if error.get('error').get('code') == 410:
+                    self.log.debug("eventId [%s] already deleted."
+                                   % (eventId, ))
+                    pass
+                else:
+                    raise
+            c.execute('''delete from sync where gid = ?''', (eventId,))
+            self.db.commit()
         else:
             self.log.warning("no google calendar selected!")
 
