@@ -1,6 +1,6 @@
-# py02g #
+# pyO2g #
 
-py02g is a (very) simple application to synchronize your Outlook calendar with your Google account.  
+pyO2g is a (very) simple application to synchronize your Outlook calendar with your Google account.  
 For now, it only support one way synchronization (from Outlook to Google).
 
 This is pretty much the same thing as Google Calendar Sync, but with a lot more bugs, and less features :stuck_out_tongue_closed_eyes:
