@@ -204,8 +204,12 @@ class MainFrame(wx.Frame):
 
         del busy
         busy = wx.BusyInfo("Syncing...")
-        self.syncMyCal()
+        self.OnTimer()
         del busy
+        self.tbicon.ShowBalloon(
+            "%s" % (title,),
+            "%s is running..." % (constants.APPNAME,),
+            100)
 
     def getOutlookCals(self):
         if self.outlook is None:
@@ -330,6 +334,6 @@ app = wx.App(redirect=True, filename="logfile.txt")
 
 frame = MainFrame(None, "%s v%s" % (constants.APPNAME, constants.VERSION))
 app.SetTopWindow(frame)
-frame.Show()
+# frame.Show()
 
 app.MainLoop()
