@@ -258,38 +258,42 @@ class Outlook(object):
 
     def getAppt(self, appts):
         events = []
-        c = self.db.cursor()
-        for i in range(1, appts.Count+1):
-            appt = appts.Item(i)
-
-            now = dt.datetime.now()
-            dStart = olDate(appt.Start)
-            if appt.IsRecurring:
-                rDate = self.getNextRecDate(appt)
-                if rDate is not None:
-                    dStart = rDate
-            if dStart >= now or appt.IsRecurring:
-                    # and appt.ResponseStatus in (3,0,1,2)
-                    # and appt.MeetingStatus in (0,1,3):
-                c.execute('''select lastUpdated, gid from sync
-                         where oid=?''', (appt.EntryID.lower(),))
-                r = c.fetchall()
-                if len(r) <= 0:
-                    # event not syncronized yet
-                    events.append(self.createEvent(appt))
-                else:
-                    # event found: check last modification date
-                    lastModification = olDate(appt.LastModificationTime)
-                    # self.log.debug("event [%s] last mod: %s"
-                    #                % (appt.Subject, lastModification))
-                    if (r[0]['lastUpdated'] is None
-                            or lastModification > r[0]['lastUpdated']):
-                        # update event (or remove / recreate)
-                        self.log.debug("event [%s] need update"
-                                       % (appt.Subject,))
-                        updatedEvent = self.createEvent(appt)
-                        updatedEvent['updateID'] = r[0]['gid']
-                        events.append(updatedEvent)
+        if self.isAlive():
+            c = self.db.cursor()
+            for i in range(1, appts.Count+1):
+                appt = appts.Item(i)
+                if "AppointmentItem" not in str(appt):
+                    self.log.debug("Unexpected Item! %s (%s)"
+                                   % (str(appt), appt.Subject))
+                    continue
+                now = dt.datetime.now()
+                dStart = olDate(appt.Start)
+                if appt.IsRecurring:
+                    rDate = self.getNextRecDate(appt)
+                    if rDate is not None:
+                        dStart = rDate
+                if dStart >= now or appt.IsRecurring:
+                        # and appt.ResponseStatus in (3,0,1,2)
+                        # and appt.MeetingStatus in (0,1,3):
+                    c.execute('''select lastUpdated, gid from sync
+                             where oid=?''', (appt.EntryID.lower(),))
+                    r = c.fetchall()
+                    if len(r) <= 0:
+                        # event not syncronized yet
+                        events.append(self.createEvent(appt))
+                    else:
+                        # event found: check last modification date
+                        lastModification = olDate(appt.LastModificationTime)
+                        # self.log.debug("event [%s] last mod: %s"
+                        #                % (appt.Subject, lastModification))
+                        if (r[0]['lastUpdated'] is None
+                                or lastModification > r[0]['lastUpdated']):
+                            # update event (or remove / recreate)
+                            self.log.debug("event [%s] need update"
+                                           % (appt.Subject,))
+                            updatedEvent = self.createEvent(appt)
+                            updatedEvent['updateID'] = r[0]['gid']
+                            events.append(updatedEvent)
         return events
 
     def createEvent(self, appt):
