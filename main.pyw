@@ -143,6 +143,7 @@ class MainFrame(wx.Frame):
             self.google = google.Google(proxy=proxy)
             self.reloadDestCal()
         except httplib2.ServerNotFoundError, e:
+            del busy
             dlg = wx.MessageDialog(
                 self,
                 "%s\r\nCheck your Internet connection "
@@ -153,6 +154,7 @@ class MainFrame(wx.Frame):
             dlg.Destroy()
             sys.exit(-1)
         except clientsecrets.InvalidClientSecretsError, e:
+            del busy
             dlg = wx.MessageDialog(
                 self,
                 """WARNING: Google API credentials not found!\r\n"""
@@ -165,6 +167,20 @@ class MainFrame(wx.Frame):
             dlg.ShowModal()
             dlg.Destroy()
             sys.exit(-1)
+        except httplib2.socks.HTTPError, e:
+            if e.message[0] == 407:  # Proxy Authentication Required
+                dlg = wx.MessageDialog(
+                    self,
+                    """Proxy authentication error!\r\n"""
+                    """Please check your proxy credentials""",
+                    "%s" % e.message[1],
+                    wx.OK | wx.ICON_ERROR)
+                del busy
+                dlg.ShowModal()
+                dlg.Destroy()
+                sys.exit(-1)
+            else:
+                raise
 
         sizer.Add(self.srcCalText, 0, wx.EXPAND | wx.ALL, 1)
         for oCal in self.oCals:
@@ -249,6 +265,12 @@ class MainFrame(wx.Frame):
                 self.retry += 1
             else:
                 self.log.AppendText("Google not responding. Giving up.\r\n")
+        except httplib2.socks.HTTPError, e:
+            if e.message[0] == 407:  # Proxy Authentication Required
+                self.log.AppendText("Proxy Authentication error!"
+                                    "Check your credentials.\r\n")
+            else:
+                self.log.AppendText("HTTP Error: %s", e.message[1])
         else:
             self.retry = 0
         self.PopStatusText()
