@@ -24,6 +24,7 @@ from oauth2client import tools
 from oauth2client import client
 from apiclient.discovery import build
 import apiclient.errors
+import socket
 
 import logging
 import httplib2
@@ -106,7 +107,12 @@ class Google(object):
         if self.calId is not None:
             c = self.db.cursor()
             http = self.credentials.authorize(self.h)
-            service = build("calendar", "v3", http=http)
+            try:
+                service = build("calendar", "v3", http=http)
+            except socket.error, e:
+                self.log.error("%s", e)
+                return
+
             for event in evts:
 
                 # log.debug("with id: %s" % (event['myid'], ))
