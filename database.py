@@ -45,6 +45,7 @@ schema = {
 checked = False
 logging.basicConfig(
     filename='logfile.txt',
+    filemode='w',
     format='%(asctime)-23s - %(levelname)-7s - %(name)s - %(message)s')
 log = logging.getLogger(__name__)
 log.setLevel(logging.DEBUG)
